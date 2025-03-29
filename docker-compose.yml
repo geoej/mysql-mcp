@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: 
+      context: ./frontend
+      args:
+        - VITE_API_URL=${API_URL:-http://localhost:8000}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped 

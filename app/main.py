@@ -4,42 +4,52 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Dict, Any
 import os
-from dotenv import load_dotenv
+from config import config
 
-# Load environment variables
-load_dotenv()
-
-app = FastAPI(title="MySQL MCP API")
+app = FastAPI(
+    title="MySQL MCP API",
+    description="MySQL Management Control Panel API",
+    version="1.0.0",
+    docs_url=None if os.getenv("ENV") == "production" else "/docs",
+    redoc_url=None if os.getenv("ENV") == "production" else "/redoc"
+)
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Database connection configuration
-DB_CONFIG = {
-    "user": os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASSWORD", ""),
-    "host": os.getenv("MYSQL_HOST", "localhost"),
-    "port": os.getenv("MYSQL_PORT", "3306"),
-}
-
 def get_db_connection(database: str = None):
     try:
-        connection_string = f"mysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}"
+        connection_string = f"mysql://{config.MYSQL_USER}:{config.MYSQL_PASSWORD}@{config.MYSQL_HOST}:{config.MYSQL_PORT}"
         if database:
             connection_string += f"/{database}"
         return create_engine(connection_string)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        engine = get_db_connection()
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+
 @app.get("/")
 async def root():
-    return {"message": "Welcome to MySQL MCP API"}
+    return {
+        "message": "Welcome to MySQL MCP API",
+        "version": "1.0.0",
+        "status": "running"
+    }
 
 @app.get("/databases", response_model=List[str])
 async def get_databases():
@@ -67,7 +77,6 @@ async def get_table_data(database_name: str, table_name: str):
     try:
         engine = get_db_connection(database_name)
         with engine.connect() as connection:
-            # Get table data
             result = connection.execute(text(f"SELECT * FROM {table_name} LIMIT 1000"))
             rows = [dict(row._mapping) for row in result]
             return {"data": rows}
